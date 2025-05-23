@@ -11,5 +11,5 @@ const { roomId } = Astro.params;
   title={`ShareScreen - Room ${roomId}`}
   description={`Join room ${roomId} to view a shared screen.`}
 >
-  <App client:load />
+  <App client:load initialScreen="guest" />
 </Layout> 

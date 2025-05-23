@@ -5,44 +5,67 @@ import GuestScreen from './GuestScreen';
 
 type ScreenType = 'home' | 'host' | 'guest';
 
-export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<ScreenType>('home');
+interface AppProps {
+  initialScreen?: ScreenType;
+}
+
+export default function App({ initialScreen = 'home' }: AppProps) {
+  const [currentScreen, setCurrentScreen] = useState<ScreenType>(initialScreen);
   const [roomId, setRoomId] = useState<string>('');
   const [nickname, setNickname] = useState<string>('');
+  const [currentPath, setCurrentPath] = useState<string>('');
 
-  // Initialize screen, roomId, and nickname on client mount
+  // Initialize and listen for URL changes
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    const path = window.location.pathname;
-    
-    // Extract roomId from URL
-    const getRoomId = (): string | null => {
-      const match = path.match(/^\/room\/(.+)$/);
-      return match ? match[1] : null;
+    const updateFromURL = () => {
+      const path = window.location.pathname;
+      setCurrentPath(path);
+      
+      // Extract roomId from URL
+      const getRoomId = (): string | null => {
+        const match = path.match(/^\/room\/(.+)$/);
+        return match ? match[1] : null;
+      };
+
+      // Determine current screen based on URL (only if no initialScreen was provided)
+      const getScreen = (): ScreenType => {
+        if (path === '/host') {
+          return 'host';
+        }
+        if (path.startsWith('/room/')) {
+          return 'guest';
+        }
+        return 'home';
+      };
+
+      // Use URL-based screen detection if no specific initialScreen was provided
+      const screen = initialScreen || getScreen();
+      const urlRoomId = getRoomId();
+      const storedNickname = sessionStorage.getItem('userNickname') || '';
+      
+      setCurrentScreen(screen);
+      setNickname(storedNickname);
+      if (urlRoomId) {
+        setRoomId(urlRoomId);
+      }
     };
 
-    // Determine current screen based on URL
-    const getScreen = (): ScreenType => {
-      if (path === '/host') {
-        return 'host';
-      }
-      if (path.startsWith('/room/')) {
-        return 'guest';
-      }
-      return 'home';
+    // Initial load
+    updateFromURL();
+
+    // Listen for browser navigation (back/forward buttons)
+    const handlePopState = () => {
+      updateFromURL();
     };
 
-    const screen = getScreen();
-    const urlRoomId = getRoomId();
-    const storedNickname = sessionStorage.getItem('userNickname') || '';
+    window.addEventListener('popstate', handlePopState);
     
-    setCurrentScreen(screen);
-    setNickname(storedNickname);
-    if (urlRoomId) {
-      setRoomId(urlRoomId);
-    }
-  }, []);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [initialScreen]);
 
   const handleCreateRoom = (nickname: string) => {
     // Store nickname and navigate to host page
