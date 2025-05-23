@@ -13,20 +13,10 @@ export default defineConfig({
     plugins: [tailwindcss()],
     define: {
       global: 'globalThis',
-    },
-    ssr: {
-      external: ['@astrojs/cloudflare']
     }
   },
 
-  integrations: [react({
-    include: ['**/react/*'],
-    experimentalReactChildren: false
-  })],
-  adapter: cloudflare({
-    platformProxy: {
-      enabled: true
-    }
-  }),
-  output: 'server'
+  integrations: [react()],
+  adapter: cloudflare(),
+  output: 'static'
 });
