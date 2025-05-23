@@ -1,0 +1,38 @@
+---
+import '../styles/global.css';
+
+export interface Props {
+  title?: string;
+  description?: string;
+}
+
+const { 
+  title = "ShareScreen - P2P Screen Sharing", 
+  description = "Secure peer-to-peer screen sharing with no servers required" 
+} = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content={description} />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    
+    <!-- Apple-specific meta tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ShareScreen" />
+    
+    <!-- PWA meta tags -->
+    <meta name="theme-color" content="#000000" />
+  </head>
+  <body>
+    <main class="min-h-screen bg-black">
+      <slot />
+    </main>
+    
+  </body>
+</html> 
