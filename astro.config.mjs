@@ -23,5 +23,5 @@ export default defineConfig({
     include: ['**/react/*']
   })],
   adapter: cloudflare(),
-  output: 'static'
+  output: 'static'  // Hybrid rendering: static by default, server-side for prerender: false pages
 });
