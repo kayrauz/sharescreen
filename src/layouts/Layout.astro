@@ -21,6 +21,21 @@ const {
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{title}</title>
     
+    <!-- Polyfills for Cloudflare Workers -->
+    <script is:inline>
+      // MessageChannel polyfill for Cloudflare Workers
+      if (typeof globalThis !== 'undefined' && !globalThis.MessageChannel) {
+        globalThis.MessageChannel = function() {
+          this.port1 = { postMessage: function() {}, onmessage: null, close: function() {} };
+          this.port2 = { postMessage: function() {}, onmessage: null, close: function() {} };
+        };
+        globalThis.MessagePort = function() {
+          this.postMessage = function() {};
+          this.close = function() {};
+        };
+      }
+    </script>
+    
     <!-- Apple-specific meta tags -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
