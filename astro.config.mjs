@@ -13,15 +13,10 @@ export default defineConfig({
     plugins: [tailwindcss()],
     define: {
       global: 'globalThis',
-    },
-    ssr: {
-      noExternal: ['react', 'react-dom']
     }
   },
 
-  integrations: [react({
-    include: ['**/react/*']
-  })],
+  integrations: [react()],
   adapter: cloudflare(),
   output: 'static'  // Hybrid rendering: static by default, server-side for prerender: false pages
 });
