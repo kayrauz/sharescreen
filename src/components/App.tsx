@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import HomePage from './HomePage';
 import HostScreen from './HostScreen';
 import GuestScreen from './GuestScreen';
+import { ToastProvider } from '../contexts/ToastContext';
+import { ToastContainer } from './Toast';
 
 type ScreenType = 'home' | 'host' | 'guest';
 
@@ -133,8 +135,11 @@ export default function App({ initialScreen = 'home' }: AppProps) {
   };
 
   return (
-    <div className="min-h-screen bg-black">
-      {renderCurrentScreen()}
-    </div>
+    <ToastProvider>
+      <div className="min-h-screen bg-black">
+        {renderCurrentScreen()}
+        <ToastContainer />
+      </div>
+    </ToastProvider>
   );
 } 

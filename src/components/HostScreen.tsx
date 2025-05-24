@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Copy, StopCircle, Users, Wifi, AlertCircle, CheckCircle, User } from 'lucide-react';
+import { Copy, StopCircle, Users, Wifi, AlertCircle, User, Monitor, ArrowLeft, Eye, Share2, Activity } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { ScreenShareManager, type GuestInfo } from '../utils/webrtc';
+import { useToast } from '../contexts/ToastContext';
 
 interface HostScreenProps {
   nickname: string;
@@ -13,10 +15,13 @@ export default function HostScreen({ nickname, onBack }: HostScreenProps) {
   const [error, setError] = useState<string>('');
   const [guestCount, setGuestCount] = useState(0);
   const [connectedGuests, setConnectedGuests] = useState<GuestInfo[]>([]);
-  const [copied, setCopied] = useState(false);
+  const { showToast } = useToast();
+  const [mounted, setMounted] = useState(false);
   const managerRef = useRef<ScreenShareManager | null>(null);
 
   useEffect(() => {
+    setMounted(true);
+    
     // Generate room ID and initialize host room
     const manager = new ScreenShareManager(
       (newStatus) => {
@@ -24,7 +29,6 @@ export default function HostScreen({ nickname, onBack }: HostScreenProps) {
           setStatus('setup');
         } else if (newStatus === 'setup') {
           setStatus('setup');
-          // Reset guest count when stopping
           setGuestCount(0);
         } else {
           setStatus(newStatus as 'setup' | 'connecting' | 'connected' | 'error');
@@ -36,9 +40,9 @@ export default function HostScreen({ nickname, onBack }: HostScreenProps) {
       (errorMessage) => {
         setError(errorMessage);
         setStatus('error');
+        showToast(errorMessage, 'error');
       },
       (guest: GuestInfo) => {
-        // This callback is for when a guest joins
         console.log('🎯 HOST UI: Guest joined callback triggered:', guest);
         if (managerRef.current) {
           const guests = managerRef.current.getConnectedGuests();
@@ -48,7 +52,6 @@ export default function HostScreen({ nickname, onBack }: HostScreenProps) {
         }
       },
       (guestId: string) => {
-        // This callback is for when a guest leaves
         console.log('🎯 HOST UI: Guest left callback triggered:', guestId);
         if (managerRef.current) {
           const guests = managerRef.current.getConnectedGuests();
@@ -60,19 +63,15 @@ export default function HostScreen({ nickname, onBack }: HostScreenProps) {
     );
     
     managerRef.current = manager;
-    
-    // Set the user's nickname
     manager.setNickname(nickname);
     
     const newRoomId = manager.generateRoomId();
     setRoomId(newRoomId);
 
-    // Initialize the host room immediately (create peer connection)
     manager.initializeHostRoom(newRoomId).catch((err) => {
       console.error('Failed to initialize host room:', err);
     });
 
-    // Update guest count and list periodically
     const updateGuestInfo = () => {
       if (managerRef.current) {
         const guests = managerRef.current.getConnectedGuests();
@@ -86,13 +85,13 @@ export default function HostScreen({ nickname, onBack }: HostScreenProps) {
       }
     };
 
-    const interval = setInterval(updateGuestInfo, 2000); // Update every 2 seconds
+    const interval = setInterval(updateGuestInfo, 2000);
 
     return () => {
       manager.stopScreenShare();
       clearInterval(interval);
     };
-  }, [nickname]);
+  }, [nickname, showToast]);
 
   const startSharing = async () => {
     if (!managerRef.current) return;
@@ -110,280 +109,422 @@ export default function HostScreen({ nickname, onBack }: HostScreenProps) {
     if (managerRef.current) {
       managerRef.current.stopScreenShare();
     }
-    // Don't call onBack() - keep host in the room
   };
 
   const copyRoomId = async () => {
     try {
       await navigator.clipboard.writeText(roomId);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      showToast('Copied to clipboard!', 'success');
     } catch (err) {
       console.error('Failed to copy:', err);
+      showToast('Failed to copy room code', 'error');
     }
   };
 
-  const getStatusIcon = () => {
+  const getStatusInfo = () => {
     switch (status) {
       case 'setup':
-        return <Users className="w-6 h-6" />;
+        return {
+          icon: Monitor,
+          color: 'blue',
+          text: guestCount > 0 ? 'Ready to share again' : 'Ready to share',
+          subtitle: guestCount > 0 ? `${guestCount} ${guestCount === 1 ? 'viewer' : 'viewers'} waiting` : 'Waiting for viewers'
+        };
       case 'connecting':
-        return <Wifi className="w-6 h-6 animate-pulse" />;
+        return {
+          icon: Wifi,
+          color: 'yellow',
+          text: 'Starting screen share...',
+          subtitle: 'Initializing connection'
+        };
       case 'connected':
-        return <CheckCircle className="w-6 h-6 text-green-500" />;
+        return {
+          icon: Activity,
+          color: 'green',
+          text: 'Sharing your screen',
+          subtitle: guestCount > 0 ? `${guestCount} ${guestCount === 1 ? 'viewer' : 'viewers'} connected` : 'No viewers yet'
+        };
       case 'error':
-        return <AlertCircle className="w-6 h-6 text-red-500" />;
+        return {
+          icon: AlertCircle,
+          color: 'red',
+          text: 'Connection failed',
+          subtitle: 'Please try again'
+        };
       default:
-        return <Users className="w-6 h-6" />;
+        return {
+          icon: Monitor,
+          color: 'blue',
+          text: 'Ready to share',
+          subtitle: 'Waiting for viewers'
+        };
     }
   };
 
-  const getStatusText = () => {
-    console.log('🎯 HOST UI: getStatusText called - status:', status, 'guestCount:', guestCount, 'connectedGuests:', connectedGuests);
-    
-    switch (status) {
-      case 'setup':
-        if (guestCount > 0) {
-          const guestNames = connectedGuests.map(g => g.nickname).join(', ');
-          console.log('🎯 HOST UI: Setup with guests - names:', guestNames);
-          return `Room active • ${guestNames} waiting`;
-        }
-        return 'Ready to share';
-      case 'connecting':
-        return 'Starting screen share...';
-      case 'connected':
-        if (guestCount > 0) {
-          const guestNames = connectedGuests.map(g => g.nickname).join(', ');
-          console.log('🎯 HOST UI: Connected with guests - names:', guestNames);
-          return `Sharing with ${guestNames}`;
-        }
-        return 'Sharing • No viewers';
-      case 'error':
-        return 'Connection failed';
-      default:
-        return 'Ready to share';
-    }
-  };
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  const statusInfo = getStatusInfo();
+  const StatusIcon = statusInfo.icon;
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="max-w-lg w-full">
-        {/* Header */}
-        <div className="text-center mb-8 animate-fade-in">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 mb-6 animate-breathe shadow-lg shadow-green-500/20">
-            {getStatusIcon()}
-          </div>
-          
-          <h1 className="text-4xl font-bold mb-2 text-[var(--color-text-primary)] bg-gradient-to-r from-white to-green-100 bg-clip-text text-transparent">
-            Share Your Screen
-          </h1>
-          
-          <p className="text-lg text-[var(--color-text-secondary)] mb-4">
-            Welcome, {nickname}!
-          </p>
-          
-          <div className={`status-indicator mx-auto ${
-            status === 'connecting' ? 'status-connecting' : 
-            status === 'connected' ? 'status-connected' : 
-            status === 'error' ? 'status-error' : ''
-          }`}>
-            {getStatusIcon()}
-            <span>{getStatusText()}</span>
-          </div>
-        </div>
+    <div className="min-h-screen bg-black flex flex-col items-center justify-center px-6 py-12 relative overflow-hidden">
+      {/* Subtle Background Elements */}
+      <motion.div 
+        className="absolute inset-0 overflow-hidden pointer-events-none"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 2, ease: "easeOut" }}
+      >
+        {/* Subtle floating shapes */}
+        <motion.div
+          className="absolute top-1/3 right-1/4 w-32 h-32 rounded-full"
+          style={{
+            background: 'radial-gradient(circle, rgba(255, 255, 255, 0.015) 0%, transparent 70%)'
+          }}
+          animate={{
+            x: [0, 20, 0],
+            y: [0, -15, 0],
+            scale: [1, 1.05, 1],
+          }}
+          transition={{
+            duration: 10,
+            repeat: Number.POSITIVE_INFINITY,
+            ease: "easeInOut"
+          }}
+        />
+        
+        <motion.div
+          className="absolute bottom-1/3 left-1/4 w-24 h-24 rounded-full"
+          style={{
+            background: 'radial-gradient(circle, rgba(255, 255, 255, 0.01) 0%, transparent 70%)'
+          }}
+          animate={{
+            x: [0, -15, 0],
+            y: [0, 10, 0],
+            scale: [1, 0.95, 1],
+          }}
+          transition={{
+            duration: 8,
+            repeat: Number.POSITIVE_INFINITY,
+            ease: "easeInOut",
+            delay: 1
+          }}
+        />
+      </motion.div>
 
-        {/* Room ID Card */}
-        <div className="glass p-8 mb-8 text-center animate-slide-up">
-          <h3 className="text-xl font-semibold mb-6 text-[var(--color-text-primary)]">
-            Room Code
-          </h3>
+      <div className="max-w-2xl w-full relative z-10">
+        {/* Header */}
+        <motion.div 
+          className="text-center mb-12"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+        >
+          {/* Back Button */}
+          <motion.button
+            type="button"
+            onClick={onBack}
+            className="absolute top-0 left-0 flex items-center text-white/70 hover:text-white text-sm transition-colors group mb-8"
+            whileHover={{ x: -2 }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to home
+          </motion.button>
+
+          {/* Status Icon */}
+          <motion.div 
+            className="inline-flex items-center justify-center w-20 h-20 border border-white/10 rounded-2xl mb-8 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-sm"
+            animate={{ 
+              boxShadow: status === 'connected' 
+                ? ['0 0 20px rgba(255, 255, 255, 0.05)', '0 0 30px rgba(255, 255, 255, 0.08)', '0 0 20px rgba(255, 255, 255, 0.05)']
+                : status === 'connecting' 
+                ? ['0 0 15px rgba(255, 255, 255, 0.03)', '0 0 25px rgba(255, 255, 255, 0.06)', '0 0 15px rgba(255, 255, 255, 0.03)']
+                : '0 0 10px rgba(255, 255, 255, 0.02)'
+            }}
+            transition={{ 
+              duration: status === 'connected' ? 3 : status === 'connecting' ? 2 : 4, 
+              repeat: Number.POSITIVE_INFINITY, 
+              ease: "easeInOut" 
+            }}
+          >
+            <StatusIcon className={`w-10 h-10 ${
+              statusInfo.color === 'green' ? 'text-white' :
+              statusInfo.color === 'yellow' ? 'text-white/80' :
+              statusInfo.color === 'red' ? 'text-white/60' :
+              'text-white'
+            }`} />
+          </motion.div>
           
-          <div className="flex items-center justify-center space-x-4 mb-6">
-            <div className="bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-2xl px-6 py-4 border border-blue-500/30">
-              <span className="text-4xl font-mono font-bold tracking-wider text-[var(--color-primary)] drop-shadow-lg">
+          {/* Title */}
+          <motion.h1 
+            className="text-4xl md:text-5xl font-semibold mb-4 text-white tracking-tight"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
+          >
+            Share Your <span className="gradient-text">Screen</span>
+          </motion.h1>
+          
+          {/* Welcome Message */}
+          <motion.p 
+            className="text-xl text-white/70 mb-6"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.4, ease: "easeOut" }}
+          >
+            Welcome back, <span className="font-medium text-white">{nickname}</span>
+          </motion.p>
+
+          {/* Status */}
+          <motion.div 
+            className={`inline-flex items-center gap-3 px-4 py-2 rounded-full border text-sm font-medium ${
+              statusInfo.color === 'green' ? 'bg-white/10 border-white/20 text-white' :
+              statusInfo.color === 'yellow' ? 'bg-white/08 border-white/15 text-white/80' :
+              statusInfo.color === 'red' ? 'bg-white/05 border-white/10 text-white/60' :
+              'bg-white/5 border-white/10 text-white/80'
+            }`}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, delay: 0.6, ease: "easeOut" }}
+          >
+            <StatusIcon className="w-4 h-4" />
+            <span>{statusInfo.text}</span>
+          </motion.div>
+          <motion.p 
+            className="text-sm text-white/50 mt-2"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.4, delay: 0.8, ease: "easeOut" }}
+          >
+            {statusInfo.subtitle}
+          </motion.p>
+        </motion.div>
+
+        {/* Room Code Card */}
+        <motion.div 
+          className="card p-8 mb-8 text-center"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.4, ease: "easeOut" }}
+        >
+          <div className="flex items-center justify-center gap-3 mb-6">
+            <Share2 className="w-5 h-5 text-white/70" />
+            <h3 className="text-xl font-medium text-white">
+              Room Code
+            </h3>
+          </div>
+          
+          <div className="flex items-center justify-center gap-4 mb-6">
+            <motion.div 
+              className="bg-gradient-to-r from-white/10 to-white/5 rounded-2xl px-8 py-6 border border-white/20 backdrop-blur-sm"
+              whileHover={{ 
+                background: "linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.08) 100%)",
+                borderColor: "rgba(255, 255, 255, 0.25)"
+              }}
+              transition={{ duration: 0.3 }}
+            >
+              <span className="text-4xl md:text-5xl font-mono font-bold tracking-wider text-white drop-shadow-lg">
                 {roomId}
               </span>
-            </div>
+            </motion.div>
             
-            <button
+            <motion.button
               type="button"
               onClick={copyRoomId}
-              className={`btn-secondary p-4 flex items-center space-x-2 transition-all duration-200 ${
-                copied ? 'bg-green-500/20 border-green-500/30 text-green-400' : ''
-              }`}
+              className="p-4 rounded-xl border transition-all duration-300 interactive bg-white/5 border-white/10 text-white/70 hover:bg-white/10 hover:border-white/20 hover:text-white"
               title="Copy room code"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
             >
-              <Copy className="w-6 h-6" />
-              {copied && <span className="text-sm font-medium">Copied!</span>}
-            </button>
+              <Copy className="w-5 h-5" />
+            </motion.button>
           </div>
-          
-          <p className="text-base text-[var(--color-text-secondary)] leading-relaxed">
-            Share this code with others to let them view your screen
-          </p>
-        </div>
 
-        {/* Error Display */}
-        {error && (
-          <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4 mb-6">
-            <div className="flex items-center space-x-3">
-              <AlertCircle className="w-5 h-5 text-red-400" />
-              <p className="text-red-400">{error}</p>
-            </div>
-          </div>
-        )}
+
+          
+          <p className="text-white/60 leading-relaxed">
+            Share this code with others so they can view your screen
+          </p>
+        </motion.div>
+
+
 
         {/* Action Buttons */}
-        <div className="space-y-4">
+        <motion.div 
+          className="space-y-4"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.6, ease: "easeOut" }}
+        >
           {status === 'setup' && (
-            <div className="space-y-3">
-              <button
-                type="button"
-                onClick={startSharing}
-                className="btn-primary px-8 py-4 text-lg font-semibold w-full"
-              >
-                {guestCount > 0 ? 'Start Sharing Again' : 'Start Sharing Screen'}
-              </button>
-              
-              <button
-                type="button"
-                onClick={onBack}
-                className="btn-secondary px-8 py-4 text-lg font-semibold w-full"
-              >
-                Leave Room
-              </button>
-            </div>
+            <motion.button
+              type="button"
+              onClick={startSharing}
+              className="w-full py-4 bg-white text-black text-lg font-medium rounded-xl hover:bg-white/90 transition-all relative overflow-hidden group"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            >
+              <span className="flex items-center justify-center">
+                <Monitor className="w-5 h-5 mr-3" />
+                {guestCount > 0 ? 'Resume Sharing' : 'Start Sharing Screen'}
+              </span>
+            </motion.button>
           )}
 
           {(status === 'connecting' || status === 'connected') && (
-            <div className="space-y-3">
-              <button
-                type="button"
-                onClick={stopSharing}
-                className="btn-secondary px-8 py-4 text-lg font-semibold w-full flex items-center justify-center space-x-2 text-red-400 border-red-500/30 hover:bg-red-900/20"
-              >
-                <StopCircle className="w-5 h-5" />
-                <span>Stop Sharing</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onBack}
-                className="btn-secondary px-8 py-4 text-lg font-semibold w-full opacity-60 hover:opacity-100"
-              >
-                Leave Room
-              </button>
-            </div>
+            <motion.button
+              type="button"
+              onClick={stopSharing}
+              className="w-full py-4 bg-white/10 text-white border border-white/20 text-lg font-medium rounded-xl hover:bg-white/20 transition-all group"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            >
+              <span className="flex items-center justify-center">
+                <StopCircle className="w-5 h-5 mr-3" />
+                Stop Sharing
+              </span>
+            </motion.button>
           )}
 
           {status === 'error' && (
-            <div className="space-y-3">
-              <button
-                type="button"
-                onClick={startSharing}
-                className="btn-primary px-8 py-4 text-lg font-semibold w-full"
-              >
+            <motion.button
+              type="button"
+              onClick={startSharing}
+              className="w-full py-4 bg-white text-black text-lg font-medium rounded-xl hover:bg-white/90 transition-all relative overflow-hidden group"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            >
+              <span className="flex items-center justify-center">
+                <Monitor className="w-5 h-5 mr-3" />
                 Try Again
-              </button>
-              
-              <button
-                type="button"
-                onClick={onBack}
-                className="btn-secondary px-8 py-4 text-lg font-semibold w-full"
-              >
-                Leave Room
-              </button>
-            </div>
+              </span>
+            </motion.button>
           )}
-        </div>
+        </motion.div>
+
+        {/* Connected Guests */}
+        {guestCount > 0 && (
+          <motion.div 
+            className="mt-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.8, ease: "easeOut" }}
+          >
+            <div className="card p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <Eye className="w-5 h-5 text-white/70" />
+                <h4 className="text-lg font-medium text-white">
+                  {status === 'connected' ? 'Currently Viewing' : 'Waiting to View'} ({guestCount})
+                </h4>
+              </div>
+              
+              <div className="space-y-3">
+                {connectedGuests.length > 0 ? (
+                  connectedGuests.map((guest, index) => (
+                    <motion.div 
+                      key={guest.id} 
+                      className="flex items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/10"
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.4, delay: index * 0.1, ease: "easeOut" }}
+                    >
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        status === 'connected' 
+                          ? 'bg-gradient-to-r from-white to-white/80' 
+                          : 'bg-gradient-to-r from-white/80 to-white/60'
+                      }`}>
+                        <User className="w-5 h-5 text-black" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-white">
+                          {guest.nickname}
+                        </p>
+                        <p className="text-sm text-white/60">
+                          {status === 'connected' ? 'Viewing your screen' : 'Ready to view'}
+                        </p>
+                      </div>
+                      <motion.div 
+                        className={`w-3 h-3 rounded-full ${
+                          status === 'connected' ? 'bg-white' : 'bg-white/60'
+                        }`}
+                        animate={{ 
+                          scale: [1, 1.2, 1],
+                          opacity: [1, 0.7, 1]
+                        }}
+                        transition={{ 
+                          duration: 2, 
+                          repeat: Number.POSITIVE_INFINITY, 
+                          ease: "easeInOut" 
+                        }}
+                      />
+                    </motion.div>
+                  ))
+                ) : (
+                  <div className="flex items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/10">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-white/60 to-white/40 flex items-center justify-center">
+                      <User className="w-5 h-5 text-black" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-white">
+                        Guest (loading...)
+                      </p>
+                      <p className="text-sm text-white/60">
+                        Connection details loading
+                      </p>
+                    </div>
+                    <motion.div 
+                      className="w-3 h-3 rounded-full bg-white/40"
+                      animate={{ 
+                        scale: [1, 1.2, 1],
+                        opacity: [0.4, 0.8, 0.4]
+                      }}
+                      transition={{ 
+                        duration: 1.5, 
+                        repeat: Number.POSITIVE_INFINITY, 
+                        ease: "easeInOut" 
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {/* Instructions */}
         {status === 'setup' && guestCount === 0 && (
-          <div className="mt-8 p-4 bg-[var(--color-surface-secondary)] rounded-lg">
-            <h4 className="font-semibold mb-2 text-[var(--color-text-primary)]">
-              Instructions:
+          <motion.div 
+            className="mt-8 card p-6"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 1.0, ease: "easeOut" }}
+          >
+            <h4 className="font-medium mb-4 text-white flex items-center gap-2">
+              <Monitor className="w-4 h-4" />
+              How it works
             </h4>
-            <ol className="text-sm text-[var(--color-text-secondary)] space-y-1 list-decimal list-inside">
+            <ol className="text-sm text-white/70 space-y-2 list-decimal list-inside">
               <li>Click "Start Sharing Screen" to begin</li>
               <li>Select which screen or window to share</li>
               <li>Share the room code with your viewers</li>
               <li>They can join using any modern web browser</li>
             </ol>
-          </div>
-        )}
-
-        {status === 'setup' && guestCount > 0 && (
-          <div className="mt-8 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-            <h4 className="font-semibold mb-3 text-blue-400">
-              Viewers Waiting ({guestCount})
-            </h4>
-            <div className="space-y-2 mb-4">
-              {connectedGuests.length > 0 ? (
-                connectedGuests.map((guest) => (
-                  <div key={guest.id} className="flex items-center space-x-3 p-2 bg-blue-500/10 rounded-lg">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
-                      <User className="w-4 h-4 text-white" />
-                    </div>
-                    <span className="text-sm font-medium text-[var(--color-text-primary)]">
-                      {guest.nickname}
-                    </span>
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                  </div>
-                ))
-              ) : (
-                <div className="flex items-center space-x-3 p-2 bg-blue-500/10 rounded-lg">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
-                    <User className="w-4 h-4 text-white" />
-                  </div>
-                  <span className="text-sm font-medium text-[var(--color-text-primary)]">
-                    Guest (nickname loading...)
-                  </span>
-                  <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
-                </div>
-              )}
-            </div>
-            <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">
-              {connectedGuests.length > 0 
-                ? `Click "Start Sharing Again" to resume sharing your screen with ${connectedGuests.map(g => g.nickname).join(', ')}.`
-                : "Click \"Start Sharing Again\" to resume sharing your screen with them."
-              }
-            </p>
-          </div>
-        )}
-
-        {(status === 'connected' || status === 'connecting') && guestCount > 0 && (
-          <div className="mt-8 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-            <h4 className="font-semibold mb-3 text-green-400">
-              Currently Viewing ({guestCount})
-            </h4>
-            <div className="space-y-2">
-              {connectedGuests.length > 0 ? (
-                connectedGuests.map((guest) => (
-                  <div key={guest.id} className="flex items-center space-x-3 p-2 bg-green-500/10 rounded-lg">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center">
-                      <User className="w-4 h-4 text-white" />
-                    </div>
-                    <span className="text-sm font-medium text-[var(--color-text-primary)]">
-                      {guest.nickname}
-                    </span>
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                  </div>
-                ))
-              ) : (
-                <div className="flex items-center space-x-3 p-2 bg-green-500/10 rounded-lg">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center">
-                    <User className="w-4 h-4 text-white" />
-                  </div>
-                  <span className="text-sm font-medium text-[var(--color-text-primary)]">
-                    Guest (nickname loading...)
-                  </span>
-                  <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
-                </div>
-              )}
-            </div>
-          </div>
+          </motion.div>
         )}
       </div>
+
+
     </div>
   );
 } 
